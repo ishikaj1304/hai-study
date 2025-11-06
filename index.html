@@ -120,11 +120,30 @@
   <!-- Papa Parse (CSV) -->
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js" crossorigin="anonymous"></script>
 <script>
+/* ---- Debug overlay so blank pages show why ---- */
+(function(){
+  function showErr(msg) {
+    const d = document.createElement('div');
+    d.style.position='fixed'; d.style.left=0; d.style.right=0; d.style.bottom=0;
+    d.style.zIndex=99999; d.style.background='#3b0a0a'; d.style.color='#fff';
+    d.style.padding='10px 14px'; d.style.font='12px/1.4 ui-monospace, Menlo, Monaco, Consolas, monospace';
+    d.textContent = '[ERROR] ' + msg;
+    document.body.appendChild(d);
+    console.error(msg);
+  }
+  window.addEventListener('error', e => showErr(e.message || String(e.error || e)));
+  window.addEventListener('unhandledrejection', e => showErr(e.reason ? (e.reason.message || String(e.reason)) : 'Unhandled promise rejection'));
+})();
+/* ---------------------------------------------- */
+
 document.addEventListener('DOMContentLoaded', () => {
+  console.log('[INIT] DOM ready');
+
   // ====== CONFIG ======
   const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycby9Qr9HKXruTlhsJ4c8J3yCvSJXE5WB-ysAUoFUEzaTJvgykVImStUXLnWOjOashncI_g/exec';
-  const CSV_URL = 'data/stimuli.csv'; // fixed path
+  const CSV_URL = 'data/stimuli.csv'; // MUST exist at /hai-study/data/stimuli.csv
   // ====================
 
   const $ = sel => document.querySelector(sel);
@@ -141,7 +160,6 @@ document.addEventListener('DOMContentLoaded', () => {
     return arr;
   }
 
-  // Random participant ID
   function genParticipantID() {
     const letters = "ABCDEFGHJKLMNPQRSTUVWXYZ";
     const nums = Math.floor(1000 + Math.random() * 9000);
@@ -159,21 +177,30 @@ document.addEventListener('DOMContentLoaded', () => {
     i: 0, tStart: 0, currentRow: null, completionCode: null
   };
 
-  // Prefill from URL (with null-guards)
+  // Hook up UI (with guards)
   $all('input[name="cond"]').forEach(r => r.checked = (r.value === state.cond));
   const nTrialsEl = $('#nTrials'); if (nTrialsEl) nTrialsEl.value = state.n;
   const nTrialsLabelEl = $('#nTrialsLabel'); if (nTrialsLabelEl) nTrialsLabelEl.textContent = state.n;
   const confEl = $('#conf'); if (confEl) confEl.addEventListener('input', e => { const cv = $('#confVal'); if (cv) cv.textContent = e.target.value; });
 
   const startBtn = $('#startBtn');
-  if (startBtn) startBtn.addEventListener('click', async () => {
+  if (!startBtn) {
+    console.warn('[INIT] #startBtn not found — check your HTML ids.');
+    return;
+  }
+
+  startBtn.addEventListener('click', async () => {
+    console.log('[CLICK] Start pressed');
     const condEl = $all('input[name="cond"]').find(r => r.checked);
     state.cond = condEl ? condEl.value : state.cond;
     state.n = Math.max(1, parseInt((nTrialsEl && nTrialsEl.value) ? nTrialsEl.value : state.n, 10));
 
     try{
+      console.log('[CSV] Fetching', CSV_URL);
+      // Sanity check: can the CSV be downloaded directly?
+      // Open this URL in a new tab: https://ishikaj1304.github.io/hai-study/data/stimuli.csv
       const rows = await loadCSV(CSV_URL);
-      if(!rows.length) throw new Error('Empty CSV');
+      if(!rows.length) throw new Error('Empty CSV (parsed 0 rows)');
       shuffle(rows, parseInt(state.orderSeed,10)/1e8);
       state.trials = rows.slice(0, state.n);
       if (nTrialsLabelEl) nTrialsLabelEl.textContent = state.n;
@@ -183,26 +210,31 @@ document.addEventListener('DOMContentLoaded', () => {
       state.i = 0;
       renderTrial();
     }catch(err){
-      alert('Failed to load CSV: ' + err.message);
+      alert('Failed to load CSV: ' + err.message + '\nCheck that this URL exists:\n' + new URL(CSV_URL, location.href).href);
+      console.error(err);
     }
   });
 
   async function loadCSV(url){
     const res = await fetch(url, { cache: 'no-store' });
-    if(!res.ok) throw new Error('HTTP '+res.status);
+    console.log('[CSV] HTTP', res.status);
+    if(!res.ok) throw new Error('HTTP '+res.status+' for '+url);
     const text = await res.text();
     const parsed = Papa.parse(text, { header: true, skipEmptyLines: true });
-    // Schema: image_url, id, ground_truth, model_prob_ai
+    console.log('[CSV] Parsed rows:', parsed.data.length);
+    // Expecting columns: id, image_url (or url), ground_truth, model_prob_ai
     const rows = parsed.data.map(r => ({
       id: (r.id||'').trim(),
       image_url: (r.image_url||r.url||'').trim(),
       ground_truth: (r.ground_truth||'').trim().toLowerCase(),
       model_prob_ai: (r.model_prob_ai===''||r.model_prob_ai==null) ? null : Number(r.model_prob_ai)
     })).filter(r => r.image_url && r.id);
+    console.log('[CSV] Valid rows after filtering:', rows.length);
     return rows;
   }
 
   function renderTrial(){
+    console.log('[TRIAL] render index', state.i);
     const t = state.trials[state.i];
     state.currentRow = t;
 
@@ -215,7 +247,6 @@ document.addEventListener('DOMContentLoaded', () => {
       img.onerror = () => alert('Image failed to load: ' + t.image_url);
     }
 
-    // HINTS — show only when cond=ai
     const hint = $('#aiHint');
     if(hint){
       if(state.cond==='ai' && typeof t.model_prob_ai==='number' && !Number.isNaN(t.model_prob_ai)){
@@ -236,7 +267,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   $all('.controls .btn').forEach(btn=>{
     btn.addEventListener('click', async (e)=>{
-      const answer = e.currentTarget.getAttribute('data-answer'); // 'ai' | 'human'
+      const answer = e.currentTarget.getAttribute('data-answer');
       const rt = Math.round(performance.now() - state.tStart);
       const conf = Number($('#conf')?.value || 3);
       const gt = state.currentRow.ground_truth;
@@ -267,6 +298,7 @@ document.addEventListener('DOMContentLoaded', () => {
         setTimeout(()=>{e.currentTarget.style.outline='none'}, 200);
       }catch(err){
         alert('Save failed. Please check your connection and try again.\n' + err.message);
+        console.error(err);
       }
     });
   });
@@ -300,7 +332,6 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   async function postRow(row){
-    // With wildcard CORS on Apps Script, no need to send origin; harmless if you keep it
     const ua = navigator.userAgent;
     const reqUrl = APPS_SCRIPT_URL + `?ua=${encodeURIComponent(ua)}`;
     const res = await fetch(reqUrl, {
@@ -313,6 +344,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 </script>
+
 
 </body>
 </html>
