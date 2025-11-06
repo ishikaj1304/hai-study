@@ -119,8 +119,7 @@
 
   <!-- Papa Parse (CSV) -->
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js" crossorigin="anonymous"></script>
+
 <script>
 /* ---- Debug overlay so blank pages show why ---- */
 (function(){
@@ -142,7 +141,7 @@ document.addEventListener('DOMContentLoaded', () => {
   console.log('[INIT] DOM ready');
 
   // ====== CONFIG ======
-  const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyzGqdPE9stPNXTjUK4sWjrY98z6iYU56oECAWq6bGVCQsa4T899qh_-qsg6hedaTQyEg/exec';
+  const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyhn1ecE3XE4hZv9j87U2rB_k5fMSGCdvLovF1KhtztbHDzs6u0zII3PcMDkmQgRtFX/exec';
   const CSV_URL = 'data/stimuli.csv'; // MUST exist at /hai-study/data/stimuli.csv
   // ====================
 
@@ -332,18 +331,19 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
 async function postRow(row){
-  const reqUrl = APPS_SCRIPT_URL; // no ?origin=...
-  const res = await fetch(reqUrl, {
+  // Add user agent if you want Apps Script to record it
+  const withUA = { ...row };
+  const res = await fetch(APPS_SCRIPT_URL, {
     method: 'POST',
-    // simple request => no preflight OPTIONS
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify(row),
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // simple request (no CORS preflight)
+    body: JSON.stringify(withUA)
   });
-  if(!res.ok) throw new Error('HTTP '+res.status);
+  if (!res.ok) throw new Error('HTTP ' + res.status);
   const data = await res.json();
-  if(!data.ok) throw new Error(data.error || 'Unknown backend error');
+  if (!data.ok) throw new Error(data.error || 'Unknown backend error');
   return data;
 }
+
 });
 </script>
 
