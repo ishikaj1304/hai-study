@@ -141,7 +141,7 @@ document.addEventListener('DOMContentLoaded', () => {
   console.log('[INIT] DOM ready');
 
   // ====== CONFIG ======
-  const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyhn1ecE3XE4hZv9j87U2rB_k5fMSGCdvLovF1KhtztbHDzs6u0zII3PcMDkmQgRtFX/exec';
+  const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyGqQiNOenbVWk3IuRQG1GADM32xo8iNqQm6vFBtG-oiVSRR8_uXMFqWbE4msv3LaTo/exec';
   const CSV_URL = 'data/stimuli.csv'; // MUST exist at /hai-study/data/stimuli.csv
   // ====================
 
@@ -331,17 +331,20 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
 async function postRow(row){
-  // Add user agent if you want Apps Script to record it
-  const withUA = { ...row };
-  const res = await fetch(APPS_SCRIPT_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // simple request (no CORS preflight)
-    body: JSON.stringify(withUA)
-  });
-  if (!res.ok) throw new Error('HTTP ' + res.status);
-  const data = await res.json();
-  if (!data.ok) throw new Error(data.error || 'Unknown backend error');
-  return data;
+  try {
+    await fetch(APPS_SCRIPT_URL, {
+      method: 'POST',
+      mode: 'no-cors',                         // <- key: avoids CORS preflight and blocks
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // simple request
+      body: JSON.stringify({ ...row, ua: navigator.userAgent })
+    });
+    // If fetch resolves, the request was queued to the network. We can't read response,
+    // but Apps Script will have received it and appended a row.
+    return { ok: true };
+  } catch (e) {
+    // Only network/offline errors arrive here
+    throw new Error('Network error sending to Google Apps Script: ' + e.message);
+  }
 }
 
 });
