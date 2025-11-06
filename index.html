@@ -83,7 +83,11 @@
           <div class="imgbox"><img id="artImg" class="art" alt="artwork" /></div>
           <div id="aiHint" class="hint hidden">
             <div><strong>AI hint</strong></div>
-            <div class="muted">P(AI-generated) = <span id="pAI" class="meter">—</span> • P(Human-made) = <span id="pHuman" class="meter">—</span></div>
+            <div class="muted">
+              AI generated Likeliness = <span id="pAI" class="meter">—</span> • 
+              Human made Likeliness = <span id="pHuman" class="meter">—</span><br/>
+              <span id="likelyLabel" style="color:var(--accent);font-weight:600"></span>
+            </div>
           </div>
         </div>
         <div>
@@ -97,6 +101,7 @@
           </div>
           <div class="stack" style="margin-top:12px">
             <label>Confidence: <span id="confVal">3</span>/5</label>
+            <p class="small">1 = not confident, 5 = extremely confident</p>
             <input id="conf" type="range" min="1" max="5" step="1" value="3" />
           </div>
           <div class="footer">
@@ -122,7 +127,13 @@
 
   <script>
   (function(){
-    function showErr(msg){const d=document.createElement('div');d.style.position='fixed';d.style.left=0;d.style.right=0;d.style.bottom=0;d.style.zIndex=99999;d.style.background='#3b0a0a';d.style.color='#fff';d.style.padding='10px 14px';d.style.font='12px/1.4 ui-monospace,Menlo,Monaco,Consolas,monospace';d.textContent='[ERROR] '+msg;document.body.appendChild(d);console.error(msg);}
+    function showErr(msg){
+      const d=document.createElement('div');
+      d.style.position='fixed';d.style.left=0;d.style.right=0;d.style.bottom=0;d.style.zIndex=99999;
+      d.style.background='#3b0a0a';d.style.color='#fff';d.style.padding='10px 14px';
+      d.style.font='12px/1.4 ui-monospace,Menlo,Monaco,Consolas,monospace';
+      d.textContent='[ERROR] '+msg;document.body.appendChild(d);console.error(msg);
+    }
     window.addEventListener('error',e=>showErr(e.message||String(e.error||e)));
     window.addEventListener('unhandledrejection',e=>showErr(e.reason?(e.reason.message||String(e.reason)):'Unhandled promise rejection'));
   })();
@@ -131,7 +142,7 @@
     const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyGqQiNOenbVWk3IuRQG1GADM32xo8iNqQm6vFBtG-oiVSRR8_uXMFqWbE4msv3LaTo/exec';
     const CSV_URL = 'data/stimuli.csv';
 
-    const $ = sel => document.querySelector(sel);
+    const $  = sel => document.querySelector(sel);
     const $all = sel => Array.from(document.querySelectorAll(sel));
     const params = new URLSearchParams(location.search);
 
@@ -143,7 +154,12 @@
       for(let i=arr.length-1;i>0;i--){const j=Math.floor(prng()*(i+1));[arr[i],arr[j]]=[arr[j],arr[i]]}
       return arr;
     }
-    function genParticipantID(){const letters="ABCDEFGHJKLMNPQRSTUVWXYZ";const nums=Math.floor(1000+Math.random()*9000);const prefix=letters[Math.floor(Math.random()*letters.length)];return`P${prefix}${nums}`;}
+    function genParticipantID(){
+      const letters="ABCDEFGHJKLMNPQRSTUVWXYZ";
+      const nums=Math.floor(1000+Math.random()*9000);
+      const prefix=letters[Math.floor(Math.random()*letters.length)];
+      return `P${prefix}${nums}`;
+    }
 
     const state = {
       pid: genParticipantID(),
@@ -154,8 +170,8 @@
       trials: [],
       i: 0, tStart: 0, currentRow: null, completionCode: null
     };
-    window.state = state; // expose globally
 
+    // UI prefill
     $all('input[name="cond"]').forEach(r => r.checked = (r.value === state.cond));
     const nTrialsEl = $('#nTrials'); if (nTrialsEl) nTrialsEl.value = state.n;
     const nTrialsLabelEl = $('#nTrialsLabel'); if (nTrialsLabelEl) nTrialsLabelEl.textContent = state.n;
@@ -170,8 +186,9 @@
         const rows = await loadCSV(CSV_URL);
         shuffle(rows, parseInt(state.orderSeed,10)/1e8);
         state.trials = rows.slice(0, state.n);
-        $('#screen-consent').classList.add('hidden');
-        $('#screen-trial').classList.remove('hidden');
+        const sc = $('#screen-consent'); if (sc) sc.classList.add('hidden');
+        const st = $('#screen-trial');   if (st) st.classList.remove('hidden');
+        state.i = 0;
         renderTrial();
       }catch(err){
         alert('Failed to load CSV: ' + err.message);
@@ -191,26 +208,52 @@
       })).filter(r=>r.image_url&&r.id);
     }
 
+    // -------- renderTrial with "likely" label + guards --------
     function renderTrial(){
-      const t=state.trials[state.i];state.currentRow=t;
-      $('#progBar').style.width=`${(state.i/state.trials.length)*100}%`;
-      $('#trialBadge').textContent=`Trial ${state.i+1} of ${state.trials.length}`;
-      $('#artImg').src=t.image_url;
-      const hint=$('#aiHint');
-      if(state.cond==='ai'&&typeof t.model_prob_ai==='number'){
-        $('#pAI').textContent=t.model_prob_ai.toFixed(2);
-        $('#pHuman').textContent=(1-t.model_prob_ai).toFixed(2);
-        hint.classList.remove('hidden');
-      }else hint.classList.add('hidden');
-      $('#conf').value=3;$('#confVal').textContent='3';$('#nextBtn').disabled=true;
-      state.tStart=performance.now();
-    }
+      const t = state.trials[state.i];
+      state.currentRow = t;
 
-    // ✅ fixed click handler
+      const prog = $('#progBar'); if (prog) prog.style.width = `${(state.i/state.trials.length)*100}%`;
+      const badge = $('#trialBadge'); if (badge) badge.textContent = `Trial ${state.i+1} of ${state.trials.length}`;
+
+      const img = $('#artImg');
+      if (img) {
+        img.src = t.image_url;
+        img.onerror = () => alert('Image failed to load: ' + t.image_url);
+      }
+
+      const hint = $('#aiHint');
+      if (hint) {
+        if (state.cond === 'ai' && typeof t.model_prob_ai === 'number' && !Number.isNaN(t.model_prob_ai)) {
+          const pAI = clamp01(t.model_prob_ai);
+          const pHuman = 1 - pAI;
+
+          const pAIel = $('#pAI');     if (pAIel) pAIel.textContent = pAI.toFixed(2);
+          const pHel  = $('#pHuman');  if (pHel)  pHel.textContent  = pHuman.toFixed(2);
+
+          const likely = $('#likelyLabel');
+          if (likely) {
+            likely.textContent = pAI >= pHuman ? "⚙️ Model suggests: AI-generated" : "🎨 Model suggests: Human-made";
+          }
+
+          hint.classList.remove('hidden');
+        } else {
+          hint.classList.add('hidden');
+        }
+      }
+
+      const conf = $('#conf'); if (conf) conf.value = 3;
+      const confVal = $('#confVal'); if (confVal) confVal.textContent = '3';
+      const nextBtn = $('#nextBtn'); if (nextBtn) nextBtn.disabled = true;
+      state.tStart = performance.now();
+    }
+    // ----------------------------------------------------------
+
+    // safe click handler
     $all('.controls .btn').forEach(btn=>{
       btn.addEventListener('click',async e=>{
-        const targetBtn=(e.currentTarget&&e.currentTarget.closest('.btn'))||e.target.closest('.btn');
-        if(!targetBtn)return;
+        const targetBtn = (e.currentTarget && e.currentTarget.closest('.btn')) || e.target.closest('.btn');
+        if(!targetBtn) return;
         const answer=(targetBtn.getAttribute('data-answer')||'ai').toLowerCase();
         const rt=Math.round(performance.now()-state.tStart);
         const conf=Number($('#conf')?.value||3);
@@ -224,37 +267,47 @@
         };
         try{
           await postRow(payload);
-          $('#nextBtn').disabled=false;
+          const nb = $('#nextBtn'); if (nb) nb.disabled=false;
           targetBtn.classList.add('clicked');
           setTimeout(()=>targetBtn.classList.remove('clicked'),200);
         }catch(err){alert('Save failed.\n'+err.message);}
       });
     });
 
-    $('#nextBtn').addEventListener('click',async()=>{
+    const nextBtn = $('#nextBtn');
+    if (nextBtn) nextBtn.addEventListener('click',async()=>{
       state.i++;
-      if(state.i<state.trials.length){renderTrial();}
+      if(state.i<state.trials.length){ renderTrial(); }
       else{
         state.completionCode='C'+Math.random().toString(36).slice(2,8).toUpperCase();
-        try{await postRow({participant_id:state.pid,condition:state.cond,trial_index:'FINAL',total_trials:state.trials.length,
-          completion_code:state.completionCode});}catch(e){}
-        $('#screen-trial').classList.add('hidden');
-        $('#screen-done').classList.remove('hidden');
-        $('#codeBox').textContent=state.completionCode;
+        try{
+          await postRow({
+            participant_id:state.pid,condition:state.cond,trial_index:'FINAL',total_trials:state.trials.length,
+            stimulus_id:'',image_url:'',model_prob_ai:'',hint_shown:'',
+            response:'DONE',ground_truth:'',correct:'',confidence:'',
+            rt_ms:'',order_seed:state.orderSeed,session_id:state.sessionId,
+            completion_code:state.completionCode
+          });
+        }catch(e){}
+        const st = $('#screen-trial'); if (st) st.classList.add('hidden');
+        const sd = $('#screen-done');  if (sd) sd.classList.remove('hidden');
+        const cb = $('#codeBox');      if (cb) cb.textContent = state.completionCode;
       }
     });
 
-    $('#copyBtn').addEventListener('click',()=>{
+    const copyBtn = $('#copyBtn');
+    if (copyBtn) copyBtn.addEventListener('click',()=>{
       navigator.clipboard.writeText(state.completionCode||'').then(()=>alert('Copied!'));
     });
 
     async function postRow(row){
+      // no-cors simple request; response is opaque (expected)
       await fetch(APPS_SCRIPT_URL,{
         method:'POST',mode:'no-cors',
         headers:{'Content-Type':'text/plain;charset=utf-8'},
         body:JSON.stringify({...row,ua:navigator.userAgent})
       });
-      return{ok:true};
+      return { ok:true };
     }
   });
   </script>
