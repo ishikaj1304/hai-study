@@ -60,8 +60,8 @@
         </div>
         <div class="card" style="background:#121621;border-color:#1d2230">
           <div class="stack">
-            <label>Participant ID (optional)</label>
-            <input id="pid" class="input" placeholder="e.g., U123 or leave blank" />
+            <!-- <label>Participant ID (optional)</label>
+            <input id="pid" class="input" placeholder="e.g., U123 or leave blank" /> -->
             <label>Condition</label>
             <div>
               <label class="pill"><input type="radio" name="cond" value="solo" checked> solo (no hint)</label>
@@ -69,8 +69,8 @@
             </div>
             <label>Number of trials</label>
             <input id="nTrials" type="number" min="4" max="1000" step="1" value="20" class="input" />
-            <label>CSV URL (optional, defaults to data/stimuli.csv)</label>
-            <input id="csvUrl" placeholder="https://raw.githubusercontent.com/…/your.csv" class="input" />
+            <!-- <label>CSV URL (optional, defaults to data/stimuli.csv)</label>
+            <input id="csvUrl" placeholder="https://raw.githubusercontent.com/…/your.csv" class="input" /> -->
             <button id="startBtn" class="btn primary">I Consent & Start</button>
             <div class="small">Tip: URL params <span class="kbd">?pid=…&cond=solo|ai&n=20&csv=…</span></div>
           </div>
@@ -124,7 +124,7 @@
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js" crossorigin="anonymous"></script>
   <script>
   // ====== CONFIG ======
-  const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbw58XwNTcg5Zlon38-SVO5EqeTFxICqXDWPHZY3wjqj6B3NeRQomFA_rcYpKAukY38e/exec';
+  const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwesPgwaUh68OEa_4Rr2bQWxDYIbr58zoDYtosyb04ToRqb1m0Yo9qKo0JRlSd5vm7Lyg/exec';
   const DEFAULT_CSV = 'data/stimuli.csv'; // or pass ?csv=<raw github url>
   // ====================
 
@@ -161,7 +161,15 @@
   $('#conf').addEventListener('input', e => { $('#confVal').textContent = e.target.value; });
 
   $('#startBtn').addEventListener('click', async () => {
-    state.pid = $('#pid').value.trim() || state.pid || `P-${state.sessionId.slice(0,6)}`;
+    // Random participant ID generator
+function genParticipantID() {
+  const letters = "ABCDEFGHJKLMNPQRSTUVWXYZ"; // avoids confusing chars
+  const nums = Math.floor(1000 + Math.random() * 9000);
+  const prefix = letters[Math.floor(Math.random() * letters.length)];
+  return `P${prefix}${nums}`; // e.g. PZ4832
+}
+state.pid = state.pid || genParticipantID();
+
     state.cond = [...document.querySelectorAll('input[name="cond"]')].find(r => r.checked)?.value || state.cond;
     state.n = Math.max(1, parseInt($('#nTrials').value || state.n, 10));
     state.csvUrl = $('#csvUrl').value.trim() || state.csvUrl;
