@@ -5,7 +5,6 @@
   <title>Modernism Origin Judgement Study</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
-    .btn.clicked{ outline: 2px solid var(--focus); }
     :root{--bg:#0f1115;--panel:#181b22;--ink:#e6e8ee;--muted:#a5adbd;--accent:#7aa2f7;--danger:#f7768e;--ok:#9ece6a;--border:#262a33;--focus:#2ac3de;--btn:#1f2330}
     *{box-sizing:border-box}
     body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:var(--ink);background:#0f1115}
@@ -25,6 +24,12 @@
     .btn.primary{background:#1b2437;border-color:#2b3854}
     .btn.ok{border-color:#2d3b2d;background:#182218}
     .btn.danger{border-color:#3b2d2f;background:#221416}
+
+    /* Visual feedback: selected answer button */
+    .btn.selected { box-shadow: 0 0 0 3px rgba(42,195,222,.16) inset; }
+    .btn.ok.selected { background:#234223; border-color:#3a6a3a; }
+    .btn.danger.selected { background:#3a1a1e; border-color:#7a3941; }
+
     .stack{display:grid;gap:6px}
     label{font-size:14px;color:var(--muted)} input[type="range"]{width:100%}
     .meter{font-variant-numeric:tabular-nums}
@@ -126,6 +131,7 @@
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js" crossorigin="anonymous"></script>
 
   <script>
+  /* Tiny error overlay */
   (function(){
     function showErr(msg){
       const d=document.createElement('div');
@@ -171,12 +177,13 @@
       i: 0, tStart: 0, currentRow: null, completionCode: null
     };
 
-    // UI prefill
+    // Prefill
     $all('input[name="cond"]').forEach(r => r.checked = (r.value === state.cond));
     const nTrialsEl = $('#nTrials'); if (nTrialsEl) nTrialsEl.value = state.n;
     const nTrialsLabelEl = $('#nTrialsLabel'); if (nTrialsLabelEl) nTrialsLabelEl.textContent = state.n;
     const confEl = $('#conf'); if (confEl) confEl.addEventListener('input', e => { const cv = $('#confVal'); if (cv) cv.textContent = e.target.value; });
 
+    // Start
     const startBtn = $('#startBtn');
     startBtn.addEventListener('click', async () => {
       const condEl = $all('input[name="cond"]').find(r => r.checked);
@@ -208,7 +215,7 @@
       })).filter(r=>r.image_url&&r.id);
     }
 
-    // -------- renderTrial with "likely" label + guards --------
+    // ---------- renderTrial (resets selection + likely label) ----------
     function renderTrial(){
       const t = state.trials[state.i];
       state.currentRow = t;
@@ -222,6 +229,13 @@
         img.onerror = () => alert('Image failed to load: ' + t.image_url);
       }
 
+      // Reset choice highlight each trial
+      $all('.controls .btn').forEach(b=>{
+        b.classList.remove('selected');
+        b.setAttribute('aria-pressed','false');
+      });
+
+      // AI hint block
       const hint = $('#aiHint');
       if (hint) {
         if (state.cond === 'ai' && typeof t.model_prob_ai === 'number' && !Number.isNaN(t.model_prob_ai)) {
@@ -235,7 +249,6 @@
           if (likely) {
             likely.textContent = pAI >= pHuman ? "⚙️ Model suggests: AI-generated" : "🎨 Model suggests: Human-made";
           }
-
           hint.classList.remove('hidden');
         } else {
           hint.classList.add('hidden');
@@ -247,13 +260,22 @@
       const nextBtn = $('#nextBtn'); if (nextBtn) nextBtn.disabled = true;
       state.tStart = performance.now();
     }
-    // ----------------------------------------------------------
+    // ------------------------------------------------------------------
 
-    // safe click handler
+    // Answer click (exclusive selection + save)
     $all('.controls .btn').forEach(btn=>{
       btn.addEventListener('click',async e=>{
-        const targetBtn = (e.currentTarget && e.currentTarget.closest('.btn')) || e.target.closest('.btn');
+        const targetBtn=(e.currentTarget && e.currentTarget.closest('.btn')) || e.target.closest('.btn');
         if(!targetBtn) return;
+
+        // Exclusive selection styling
+        $all('.controls .btn').forEach(b=>{
+          b.classList.remove('selected');
+          b.setAttribute('aria-pressed','false');
+        });
+        targetBtn.classList.add('selected');
+        targetBtn.setAttribute('aria-pressed','true');
+
         const answer=(targetBtn.getAttribute('data-answer')||'ai').toLowerCase();
         const rt=Math.round(performance.now()-state.tStart);
         const conf=Number($('#conf')?.value||3);
@@ -268,12 +290,14 @@
         try{
           await postRow(payload);
           const nb = $('#nextBtn'); if (nb) nb.disabled=false;
-          targetBtn.classList.add('clicked');
-          setTimeout(()=>targetBtn.classList.remove('clicked'),200);
-        }catch(err){alert('Save failed.\n'+err.message);}
+        }catch(err){
+          alert('Save failed.\n'+(err?.message||err));
+          console.error(err);
+        }
       });
     });
 
+    // Next
     const nextBtn = $('#nextBtn');
     if (nextBtn) nextBtn.addEventListener('click',async()=>{
       state.i++;
@@ -295,13 +319,14 @@
       }
     });
 
+    // Copy code
     const copyBtn = $('#copyBtn');
     if (copyBtn) copyBtn.addEventListener('click',()=>{
       navigator.clipboard.writeText(state.completionCode||'').then(()=>alert('Copied!'));
     });
 
+    // Fire-and-forget POST to Apps Script (no-cors)
     async function postRow(row){
-      // no-cors simple request; response is opaque (expected)
       await fetch(APPS_SCRIPT_URL,{
         method:'POST',mode:'no-cors',
         headers:{'Content-Type':'text/plain;charset=utf-8'},
