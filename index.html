@@ -142,7 +142,7 @@ document.addEventListener('DOMContentLoaded', () => {
   console.log('[INIT] DOM ready');
 
   // ====== CONFIG ======
-  const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycby9Qr9HKXruTlhsJ4c8J3yCvSJXE5WB-ysAUoFUEzaTJvgykVImStUXLnWOjOashncI_g/exec';
+  const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxf9Fc5lP5oOfEQ_vAu9-mJ0LRTZ-KlVAlIIczPOoVgRpnINHLdkcuydzHQljv6yUWvEQ/exec';
   const CSV_URL = 'data/stimuli.csv'; // MUST exist at /hai-study/data/stimuli.csv
   // ====================
 
@@ -331,17 +331,19 @@ document.addEventListener('DOMContentLoaded', () => {
     navigator.clipboard.writeText(state.completionCode || '').then(()=>alert('Copied!'));
   });
 
-  async function postRow(row){
-    const ua = navigator.userAgent;
-    const reqUrl = APPS_SCRIPT_URL + `?ua=${encodeURIComponent(ua)}`;
-    const res = await fetch(reqUrl, {
-      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(row)
-    });
-    if(!res.ok) throw new Error('HTTP '+res.status);
-    const data = await res.json();
-    if(!data.ok) throw new Error(data.error || 'Unknown backend error');
-    return data;
-  }
+async function postRow(row){
+  const reqUrl = APPS_SCRIPT_URL; // no ?origin=...
+  const res = await fetch(reqUrl, {
+    method: 'POST',
+    // simple request => no preflight OPTIONS
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(row),
+  });
+  if(!res.ok) throw new Error('HTTP '+res.status);
+  const data = await res.json();
+  if(!data.ok) throw new Error(data.error || 'Unknown backend error');
+  return data;
+}
 });
 </script>
 
