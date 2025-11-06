@@ -1,3 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Modernism Origin Judgement Study</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root{--bg:#0f1115;--panel:#181b22;--ink:#e6e8ee;--muted:#a5adbd;--accent:#7aa2f7;--danger:#f7768e;--ok:#9ece6a;--border:#262a33;--focus:#2ac3de;--btn:#1f2330}
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:var(--ink);background:#0f1115}
+    .wrap{max-width:920px;margin:0 auto;padding:24px}
+    .card{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:20px;box-shadow:0 6px 20px rgba(0,0,0,.25)}
+    header{margin-bottom:16px} h1{font-size:22px;margin:0 0 8px}
+    .row{display:grid;gap:12px}.row.cols-2{grid-template-columns:1fr 1fr}
+    .muted{color:var(--muted);font-size:14px}
+    .imgbox{border-radius:16px;overflow:hidden;background:#0b0d12;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;min-height:420px}
+    img.art{max-width:100%;max-height:70vh;display:block}
+    .hint{margin-top:10px;padding:10px 12px;border:1px dashed #2b3040;border-radius:12px;background:#141824}
+    .hint strong{color:var(--accent)}
+    .controls{display:grid;gap:12px;grid-template-columns:repeat(2,minmax(0,1fr));margin-top:16px}
+    .btn{appearance:none;border:1px solid var(--border);border-radius:12px;background:var(--btn);color:var(--ink);padding:14px 16px;font-weight:600;cursor:pointer;transition:transform .02s,border-color .2s,box-shadow .2s}
+    .btn:hover{border-color:var(--focus);box-shadow:0 0 0 4px rgba(42,195,222,.12) inset}
+    .btn:active{transform:translateY(1px)} .btn.ghost{background:transparent}
+    .btn.primary{background:#1b2437;border-color:#2b3854}
+    .btn.ok{border-color:#2d3b2d;background:#182218}
+    .btn.danger{border-color:#3b2d2f;background:#221416}
+    .stack{display:grid;gap:6px}
+    label{font-size:14px;color:var(--muted)} input[type="range"]{width:100%}
+    .meter{font-variant-numeric:tabular-nums}
+    .progress{height:8px;border-radius:99px;background:#13151b;border:1px solid var(--border);overflow:hidden;margin-bottom:12px}
+    .progress>div{height:100%;background:linear-gradient(90deg,#7aa2f7,#2ac3de);width:0%}
+    .pill{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);background:#12151d;border:1px solid var(--border);padding:6px 10px;border-radius:999px}
+    .center{text-align:center}.small{font-size:13px;color:var(--muted)} .hidden{display:none!important}
+    .footer{margin-top:18px;display:flex;justify-content:space-between;align-items:center}
+    .kbd{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono",monospace;background:#0f1320;border:1px solid var(--border);padding:2px 6px;border-radius:6px}
+    input.input{padding:10px;border-radius:10px;border:1px solid var(--border);background:#0f1320;color:var(--ink)}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Modernism Origin Judgement Study</h1>
+      <div class="muted">Decide whether each artwork is <strong>AI-generated</strong> or <strong>Human-made</strong>. Your answers help our research.</div>
+    </header>
+
+    <!-- Consent / Setup -->
+    <section id="screen-consent" class="card">
+      <div class="row">
+        <div>
+          <h3>Instructions</h3>
+          <p class="muted">
+            You will see around <span id="nTrialsLabel">N</span> artworks.
+
+            In some sessions you may also see a model’s probability hint.
+          </p>
+          <ul class="muted">
+            <li>Use the confidence slider after each choice.</li>
+            <li>You can’t go back to previous items.</li>
+            <li>Takes under 10 minutes.</li>
+          </ul>
+        </div>
+        <div class="card" style="background:#121621;border-color:#1d2230">
+          <div class="stack">
+            <label>Condition</label>
+            <div>
+              <label class="pill"><input type="radio" name="cond" value="solo" checked> solo (no hint)</label>
+              <label class="pill" style="margin-left:8px"><input type="radio" name="cond" value="ai"> ai (with hint)</label>
+            </div>
+            <label>Number of trials</label>
+            <input id="nTrials" type="number" min="4" max="1000" step="1" value="20" class="input" />
+            <button id="startBtn" class="btn primary">I Consent & Start</button>
+            <div class="small">Tip: You can also set <span class="kbd">?cond=solo|ai&n=20</span> in the URL.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Trial Screen -->
+    <section id="screen-trial" class="card hidden">
+      <div class="progress"><div id="progBar"></div></div>
+      <div class="row cols-2">
+        <div>
+          <div class="imgbox"><img id="artImg" class="art" alt="artwork" /></div>
+          <div id="aiHint" class="hint hidden">
+            <div><strong>AI hint</strong></div>
+            <div class="muted">P(AI-generated) = <span id="pAI" class="meter">—</span> • P(Human-made) = <span id="pHuman" class="meter">—</span></div>
+          </div>
+        </div>
+        <div>
+          <div class="pill"><span id="trialBadge">Trial 1</span></div>
+          <div class="stack" style="margin-top:8px">
+            <label>Make your judgement</label>
+            <div class="controls">
+              <button class="btn ok" data-answer="human">Human-made</button>
+              <button class="btn danger" data-answer="ai">AI-generated</button>
+            </div>
+          </div>
+          <div class="stack" style="margin-top:12px">
+            <label>Confidence: <span id="confVal">3</span>/5</label>
+            <input id="conf" type="range" min="1" max="5" step="1" value="3" />
+          </div>
+          <div class="footer">
+            <div class="small">No back button. Your response saves automatically.</div>
+            <button id="nextBtn" class="btn ghost" disabled>Next</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Finish Screen -->
+    <section id="screen-done" class="card hidden center">
+      <h3>All done — thanks!</h3>
+      <p class="muted">Your completion code:</p>
+      <p style="font-size:28px;font-weight:800;letter-spacing:1px" id="codeBox">—</p>
+      <p class="small">Copy this code to submit your study.</p>
+      <button id="copyBtn" class="btn primary">Copy Code</button>
+    </section>
+  </div>
+
+  <!-- Papa Parse (CSV) -->
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js" crossorigin="anonymous"></script>
 <script>
 document.addEventListener('DOMContentLoaded', () => {
@@ -192,3 +313,6 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 </script>
+
+</body>
+</html>
