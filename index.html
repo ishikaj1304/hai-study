@@ -32,7 +32,7 @@
     .pill{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);background:#12151d;border:1px solid var(--border);padding:6px 10px;border-radius:999px}
     .center{text-align:center}.small{font-size:13px;color:var(--muted)} .hidden{display:none!important}
     .footer{margin-top:18px;display:flex;justify-content:space-between;align-items:center}
-    .kbd{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono",monospace;background:#0f1320;border:1px solid var(--border);padding:2px 6px;border-radius:6px}
+    .kbd{font-family:ui-monospace,Menlo,Monaco,Consolas,monospace;background:#0f1320;border:1px solid var(--border);padding:2px 6px;border-radius:6px}
     input.input{padding:10px;border-radius:10px;border:1px solid var(--border);background:#0f1320;color:var(--ink)}
   </style>
 </head>
@@ -50,7 +50,6 @@
           <h3>Instructions</h3>
           <p class="muted">
             You will see around <span id="nTrialsLabel">N</span> artworks.
-
             In some sessions you may also see a model’s probability hint.
           </p>
           <ul class="muted">
@@ -117,239 +116,204 @@
     </section>
   </div>
 
-  <!-- Papa Parse (CSV) -->
+  <!-- Papa Parse -->
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js" crossorigin="anonymous"></script>
 
-<script>
-/* ---- Debug overlay so blank pages show why ---- */
-(function(){
-  function showErr(msg) {
-    const d = document.createElement('div');
-    d.style.position='fixed'; d.style.left=0; d.style.right=0; d.style.bottom=0;
-    d.style.zIndex=99999; d.style.background='#3b0a0a'; d.style.color='#fff';
-    d.style.padding='10px 14px'; d.style.font='12px/1.4 ui-monospace, Menlo, Monaco, Consolas, monospace';
-    d.textContent = '[ERROR] ' + msg;
-    document.body.appendChild(d);
-    console.error(msg);
-  }
-  window.addEventListener('error', e => showErr(e.message || String(e.error || e)));
-  window.addEventListener('unhandledrejection', e => showErr(e.reason ? (e.reason.message || String(e.reason)) : 'Unhandled promise rejection'));
-})();
-/* ---------------------------------------------- */
+  <script>
+  // ---- tiny error overlay (helps if something blanks) ----
+  (function(){
+    function showErr(msg){const d=document.createElement('div');d.style.position='fixed';d.style.left=0;d.style.right=0;d.style.bottom=0;d.style.zIndex=99999;d.style.background='#3b0a0a';d.style.color='#fff';d.style.padding='10px 14px';d.style.font='12px/1.4 ui-monospace,Menlo,Monaco,Consolas,monospace';d.textContent='[ERROR] '+msg;document.body.appendChild(d);console.error(msg);}
+    window.addEventListener('error',e=>showErr(e.message||String(e.error||e)));
+    window.addEventListener('unhandledrejection',e=>showErr(e.reason?(e.reason.message||String(e.reason)):'Unhandled promise rejection'));
+  })();
 
-document.addEventListener('DOMContentLoaded', () => {
-  console.log('[INIT] DOM ready');
+  document.addEventListener('DOMContentLoaded', () => {
+    // ====== CONFIG ======
+    const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyGqQiNOenbVWk3IuRQG1GADM32xo8iNqQm6vFBtG-oiVSRR8_uXMFqWbE4msv3LaTo/exec';
+    const CSV_URL = 'data/stimuli.csv'; // ensure this file exists in /hai-study/data/
+    // ====================
 
-  // ====== CONFIG ======
-  const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyGqQiNOenbVWk3IuRQG1GADM32xo8iNqQm6vFBtG-oiVSRR8_uXMFqWbE4msv3LaTo/exec';
-  const CSV_URL = 'data/stimuli.csv'; // MUST exist at /hai-study/data/stimuli.csv
-  // ====================
+    const $ = sel => document.querySelector(sel);
+    const $all = sel => Array.from(document.querySelectorAll(sel));
+    const params = new URLSearchParams(location.search);
 
-  const $ = sel => document.querySelector(sel);
-  const $all = sel => Array.from(document.querySelectorAll(sel));
-  const params = new URLSearchParams(location.search);
-  const uuid = () => ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c =>
-    (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)
-  );
-  const clamp01 = x => Math.max(0, Math.min(1, x));
-  function shuffle(arr, seed=Math.random()){
-    function mulberry32(a){return function(){var t=a+=0x6D2B79F5;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return((t^t>>>14)>>>0)/4294967296;}}
-    const prng = mulberry32(Math.floor(seed*1e9));
-    for(let i=arr.length-1;i>0;i--){const j=Math.floor(prng()*(i+1));[arr[i],arr[j]]=[arr[j],arr[i]]}
-    return arr;
-  }
-
-  function genParticipantID() {
-    const letters = "ABCDEFGHJKLMNPQRSTUVWXYZ";
-    const nums = Math.floor(1000 + Math.random() * 9000);
-    const prefix = letters[Math.floor(Math.random() * letters.length)];
-    return `P${prefix}${nums}`;
-  }
-
-  const state = {
-    pid: genParticipantID(),
-    cond: (params.get('cond') || 'solo').toLowerCase(), // solo | ai
-    n: Math.max(1, parseInt(params.get('n') || '20', 10)),
-    orderSeed: Math.random().toString().slice(2,10),
-    sessionId: uuid(),
-    trials: [],
-    i: 0, tStart: 0, currentRow: null, completionCode: null
-  };
-
-  // Hook up UI (with guards)
-  $all('input[name="cond"]').forEach(r => r.checked = (r.value === state.cond));
-  const nTrialsEl = $('#nTrials'); if (nTrialsEl) nTrialsEl.value = state.n;
-  const nTrialsLabelEl = $('#nTrialsLabel'); if (nTrialsLabelEl) nTrialsLabelEl.textContent = state.n;
-  const confEl = $('#conf'); if (confEl) confEl.addEventListener('input', e => { const cv = $('#confVal'); if (cv) cv.textContent = e.target.value; });
-
-  const startBtn = $('#startBtn');
-  if (!startBtn) {
-    console.warn('[INIT] #startBtn not found — check your HTML ids.');
-    return;
-  }
-
-  startBtn.addEventListener('click', async () => {
-    console.log('[CLICK] Start pressed');
-    const condEl = $all('input[name="cond"]').find(r => r.checked);
-    state.cond = condEl ? condEl.value : state.cond;
-    state.n = Math.max(1, parseInt((nTrialsEl && nTrialsEl.value) ? nTrialsEl.value : state.n, 10));
-
-    try{
-      console.log('[CSV] Fetching', CSV_URL);
-      // Sanity check: can the CSV be downloaded directly?
-      // Open this URL in a new tab: https://ishikaj1304.github.io/hai-study/data/stimuli.csv
-      const rows = await loadCSV(CSV_URL);
-      if(!rows.length) throw new Error('Empty CSV (parsed 0 rows)');
-      shuffle(rows, parseInt(state.orderSeed,10)/1e8);
-      state.trials = rows.slice(0, state.n);
-      if (nTrialsLabelEl) nTrialsLabelEl.textContent = state.n;
-
-      $('#screen-consent')?.classList.add('hidden');
-      $('#screen-trial')?.classList.remove('hidden');
-      state.i = 0;
-      renderTrial();
-    }catch(err){
-      alert('Failed to load CSV: ' + err.message + '\nCheck that this URL exists:\n' + new URL(CSV_URL, location.href).href);
-      console.error(err);
+    const uuid = () => ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g,c=>(c^crypto.getRandomValues(new Uint8Array(1))[0]&15>>c/4).toString(16));
+    const clamp01 = x => Math.max(0, Math.min(1, x));
+    function shuffle(arr, seed=Math.random()){
+      function mulberry32(a){return function(){var t=a+=0x6D2B79F5;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return((t^t>>>14)>>>0)/4294967296;}}
+      const prng = mulberry32(Math.floor(seed*1e9));
+      for(let i=arr.length-1;i>0;i--){const j=Math.floor(prng()*(i+1));[arr[i],arr[j]]=[arr[j],arr[i]]}
+      return arr;
     }
-  });
+    function genParticipantID(){const letters="ABCDEFGHJKLMNPQRSTUVWXYZ";const nums=Math.floor(1000+Math.random()*9000);const prefix=letters[Math.floor(Math.random()*letters.length)];return`P${prefix}${nums}`;}
 
-  async function loadCSV(url){
-    const res = await fetch(url, { cache: 'no-store' });
-    console.log('[CSV] HTTP', res.status);
-    if(!res.ok) throw new Error('HTTP '+res.status+' for '+url);
-    const text = await res.text();
-    const parsed = Papa.parse(text, { header: true, skipEmptyLines: true });
-    console.log('[CSV] Parsed rows:', parsed.data.length);
-    // Expecting columns: id, image_url (or url), ground_truth, model_prob_ai
-    const rows = parsed.data.map(r => ({
-      id: (r.id||'').trim(),
-      image_url: (r.image_url||r.url||'').trim(),
-      ground_truth: (r.ground_truth||'').trim().toLowerCase(),
-      model_prob_ai: (r.model_prob_ai===''||r.model_prob_ai==null) ? null : Number(r.model_prob_ai)
-    })).filter(r => r.image_url && r.id);
-    console.log('[CSV] Valid rows after filtering:', rows.length);
-    return rows;
-  }
+    const state = {
+      pid: genParticipantID(),
+      cond: (params.get('cond') || 'solo').toLowerCase(), // solo | ai
+      n: Math.max(1, parseInt(params.get('n') || '20', 10)),
+      orderSeed: Math.random().toString().slice(2,10),
+      sessionId: uuid(),
+      trials: [],
+      i: 0, tStart: 0, currentRow: null, completionCode: null
+    };
 
-  function renderTrial(){
-    console.log('[TRIAL] render index', state.i);
-    const t = state.trials[state.i];
-    state.currentRow = t;
+    // UI prefill
+    $all('input[name="cond"]').forEach(r => r.checked = (r.value === state.cond));
+    const nTrialsEl = $('#nTrials'); if (nTrialsEl) nTrialsEl.value = state.n;
+    const nTrialsLabelEl = $('#nTrialsLabel'); if (nTrialsLabelEl) nTrialsLabelEl.textContent = state.n;
+    const confEl = $('#conf'); if (confEl) confEl.addEventListener('input', e => { const cv = $('#confVal'); if (cv) cv.textContent = e.target.value; });
 
-    const prog = $('#progBar'); if (prog) prog.style.width = `${(state.i/state.trials.length)*100}%`;
-    const badge = $('#trialBadge'); if (badge) badge.textContent = `Trial ${state.i+1} of ${state.trials.length}`;
-
-    const img = $('#artImg');
-    if (img) {
-      img.src = t.image_url;
-      img.onerror = () => alert('Image failed to load: ' + t.image_url);
-    }
-
-    const hint = $('#aiHint');
-    if(hint){
-      if(state.cond==='ai' && typeof t.model_prob_ai==='number' && !Number.isNaN(t.model_prob_ai)){
-        const pAI = clamp01(t.model_prob_ai);
-        const pAIel = $('#pAI'); if (pAIel) pAIel.textContent = pAI.toFixed(2);
-        const pH = $('#pHuman'); if (pH) pH.textContent = (1-pAI).toFixed(2);
-        hint.classList.remove('hidden');
-      }else{
-        hint.classList.add('hidden');
-      }
-    }
-
-    const conf = $('#conf'); if (conf) conf.value = 3;
-    const confVal = $('#confVal'); if (confVal) confVal.textContent = '3';
-    const nextBtn = $('#nextBtn'); if (nextBtn) nextBtn.disabled = true;
-    state.tStart = performance.now();
-  }
-
-  $all('.controls .btn').forEach(btn=>{
-    btn.addEventListener('click', async (e)=>{
-      const answer = e.currentTarget.getAttribute('data-answer');
-      const rt = Math.round(performance.now() - state.tStart);
-      const conf = Number($('#conf')?.value || 3);
-      const gt = state.currentRow.ground_truth;
-      const correct = gt ? (answer.toLowerCase() === gt) : '';
-
-      const payload = {
-        participant_id: state.pid,
-        condition: state.cond,
-        trial_index: state.i + 1,
-        total_trials: state.trials.length,
-        stimulus_id: state.currentRow.id,
-        image_url: state.currentRow.image_url,
-        model_prob_ai: (typeof state.currentRow.model_prob_ai==='number') ? state.currentRow.model_prob_ai : '',
-        hint_shown: state.cond === 'ai' && typeof state.currentRow.model_prob_ai==='number',
-        response: answer,
-        ground_truth: state.currentRow.ground_truth || '',
-        correct,
-        confidence: conf,
-        rt_ms: rt,
-        order_seed: state.orderSeed,
-        session_id: state.sessionId
-      };
+    const startBtn = $('#startBtn');
+    startBtn.addEventListener('click', async () => {
+      const condEl = $all('input[name="cond"]').find(r => r.checked);
+      state.cond = condEl ? condEl.value : state.cond;
+      state.n = Math.max(1, parseInt((nTrialsEl && nTrialsEl.value) ? nTrialsEl.value : state.n, 10));
 
       try{
-        await postRow(payload);
-        const nextBtn = $('#nextBtn'); if (nextBtn) nextBtn.disabled = false;
-        e.currentTarget.style.outline='2px solid var(--focus)';
-        setTimeout(()=>{e.currentTarget.style.outline='none'}, 200);
+        const rows = await loadCSV(CSV_URL);
+        if(!rows.length) throw new Error('Empty CSV (parsed 0 rows)');
+        shuffle(rows, parseInt(state.orderSeed,10)/1e8);
+        state.trials = rows.slice(0, state.n);
+        if (nTrialsLabelEl) nTrialsLabelEl.textContent = state.n;
+
+        $('#screen-consent').classList.add('hidden');
+        $('#screen-trial').classList.remove('hidden');
+        state.i = 0;
+        renderTrial();
       }catch(err){
-        alert('Save failed. Please check your connection and try again.\n' + err.message);
+        alert('Failed to load CSV: ' + err.message + '\nCheck that this URL exists:\n' + new URL(CSV_URL, location.href).href);
         console.error(err);
       }
     });
-  });
 
-  const nextBtn = $('#nextBtn');
-  if (nextBtn) nextBtn.addEventListener('click', async ()=>{
-    state.i++;
-    if(state.i < state.trials.length){
-      renderTrial();
-    }else{
-      state.completionCode = 'C' + Math.random().toString(36).slice(2,8).toUpperCase();
-      try{
-        await postRow({
-          participant_id: state.pid, condition: state.cond,
-          trial_index: 'FINAL', total_trials: state.trials.length,
-          stimulus_id: '', image_url: '', model_prob_ai: '', hint_shown: '',
-          response: 'DONE', ground_truth: '', correct: '', confidence: '',
-          rt_ms: '', order_seed: state.orderSeed, session_id: state.sessionId,
-          completion_code: state.completionCode
-        });
-      }catch(e){}
-      $('#screen-trial')?.classList.add('hidden');
-      $('#screen-done')?.classList.remove('hidden');
-      const codeBox = $('#codeBox'); if (codeBox) codeBox.textContent = state.completionCode;
+    async function loadCSV(url){
+      const res = await fetch(url, { cache: 'no-store' });
+      if(!res.ok) throw new Error('HTTP '+res.status+' for '+url);
+      const text = await res.text();
+      const parsed = Papa.parse(text, { header: true, skipEmptyLines: true });
+      const rows = parsed.data.map(r => ({
+        id: (r.id||'').trim(),
+        image_url: (r.image_url||r.url||'').trim(),
+        ground_truth: (r.ground_truth||'').trim().toLowerCase(),
+        model_prob_ai: (r.model_prob_ai===''||r.model_prob_ai==null) ? null : Number(r.model_prob_ai)
+      })).filter(r => r.image_url && r.id);
+      return rows;
+    }
+
+    function renderTrial(){
+      const t = state.trials[state.i];
+      state.currentRow = t;
+
+      const prog = $('#progBar'); if (prog) prog.style.width = `${((state.i)/state.trials.length)*100}%`;
+      const badge = $('#trialBadge'); if (badge) badge.textContent = `Trial ${state.i+1} of ${state.trials.length}`;
+
+      const img = $('#artImg');
+      if (img) {
+        img.src = t.image_url;
+        img.onerror = () => alert('Image failed to load: ' + t.image_url);
+      }
+
+      const hint = $('#aiHint');
+      if(hint){
+        if(state.cond==='ai' && typeof t.model_prob_ai==='number' && !Number.isNaN(t.model_prob_ai)){
+          const pAI = clamp01(t.model_prob_ai);
+          const pAIel = $('#pAI'); if (pAIel) pAIel.textContent = pAI.toFixed(2);
+          const pH = $('#pHuman'); if (pH) pH.textContent = (1-pAI).toFixed(2);
+          hint.classList.remove('hidden');
+        }else{
+          hint.classList.add('hidden');
+        }
+      }
+
+      const conf = $('#conf'); if (conf) conf.value = 3;
+      const confVal = $('#confVal'); if (confVal) confVal.textContent = '3';
+      const nextBtn = $('#nextBtn'); if (nextBtn) nextBtn.disabled = true;
+      state.tStart = performance.now();
+    }
+
+    // SAFER click handler (captures element before await)
+    $all('.controls .btn').forEach(btn=>{
+      btn.addEventListener('click', async (e)=>{
+        const btnEl = e.currentTarget instanceof HTMLElement ? e.currentTarget : null;
+
+        const answer = btnEl?.getAttribute('data-answer') || e.target?.getAttribute('data-answer') || 'ai';
+        const rt = Math.round(performance.now() - state.tStart);
+        const conf = Number($('#conf')?.value || 3);
+        const gt = state.currentRow?.ground_truth || '';
+        const correct = gt ? (answer.toLowerCase() === gt) : '';
+
+        const payload = {
+          participant_id: state.pid,
+          condition: state.cond,
+          trial_index: state.i + 1,
+          total_trials: state.trials.length,
+          stimulus_id: state.currentRow?.id || '',
+          image_url: state.currentRow?.image_url || '',
+          model_prob_ai: (typeof state.currentRow?.model_prob_ai==='number') ? state.currentRow.model_prob_ai : '',
+          hint_shown: state.cond === 'ai' && typeof state.currentRow?.model_prob_ai==='number',
+          response: answer,
+          ground_truth: gt,
+          correct,
+          confidence: conf,
+          rt_ms: rt,
+          order_seed: state.orderSeed,
+          session_id: state.sessionId
+        };
+
+        try{
+          await postRow(payload); // no-cors simple request
+
+          const nextBtn = $('#nextBtn'); if (nextBtn) nextBtn.disabled = false;
+          if (btnEl) {
+            btnEl.style.outline = '2px solid var(--focus)';
+            setTimeout(()=>{ if (btnEl) btnEl.style.outline = 'none'; }, 200);
+          }
+        }catch(err){
+          alert('Save failed. Please check your connection and try again.\n' + (err?.message || err));
+          console.error(err);
+        }
+      });
+    });
+
+    const nextBtn = $('#nextBtn');
+    if (nextBtn) nextBtn.addEventListener('click', async ()=>{
+      state.i++;
+      if(state.i < state.trials.length){
+        renderTrial();
+      }else{
+        state.completionCode = 'C' + Math.random().toString(36).slice(2,8).toUpperCase();
+        try{
+          await postRow({
+            participant_id: state.pid, condition: state.cond,
+            trial_index: 'FINAL', total_trials: state.trials.length,
+            stimulus_id: '', image_url: '', model_prob_ai: '', hint_shown: '',
+            response: 'DONE', ground_truth: '', correct: '', confidence: '',
+            rt_ms: '', order_seed: state.orderSeed, session_id: state.sessionId,
+            completion_code: state.completionCode
+          });
+        }catch(e){}
+        $('#screen-trial')?.classList.add('hidden');
+        $('#screen-done')?.classList.remove('hidden');
+        const codeBox = $('#codeBox'); if (codeBox) codeBox.textContent = state.completionCode;
+      }
+    });
+
+    const copyBtn = $('#copyBtn');
+    if (copyBtn) copyBtn.addEventListener('click', ()=> {
+      navigator.clipboard.writeText(state.completionCode || '').then(()=>alert('Copied!'));
+    });
+
+    async function postRow(row){
+      // Simple request (no CORS preflight). You won't be able to read the response—this is expected.
+      await fetch(APPS_SCRIPT_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ ...row, ua: navigator.userAgent })
+      });
+      return { ok: true };
     }
   });
-
-  const copyBtn = $('#copyBtn');
-  if (copyBtn) copyBtn.addEventListener('click', ()=> {
-    navigator.clipboard.writeText(state.completionCode || '').then(()=>alert('Copied!'));
-  });
-
-async function postRow(row){
-  try {
-    await fetch(APPS_SCRIPT_URL, {
-      method: 'POST',
-      mode: 'no-cors',                         // <- key: avoids CORS preflight and blocks
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // simple request
-      body: JSON.stringify({ ...row, ua: navigator.userAgent })
-    });
-    // If fetch resolves, the request was queued to the network. We can't read response,
-    // but Apps Script will have received it and appended a row.
-    return { ok: true };
-  } catch (e) {
-    // Only network/offline errors arrive here
-    throw new Error('Network error sending to Google Apps Script: ' + e.message);
-  }
-}
-
-});
-</script>
-
-
+  </script>
 </body>
 </html>
