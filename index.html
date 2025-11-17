@@ -130,11 +130,11 @@
     </section>
   </div>
 
-  <!-- Papa Parse -->
+
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js" crossorigin="anonymous"></script>
 
   <script>
-  /* Tiny error overlay */
+
   (function(){
     function showErr(msg){
       const d=document.createElement('div');
@@ -218,7 +218,7 @@
       })).filter(r=>r.image_url&&r.id);
     }
 
-    // ---------- renderTrial (resets selection + likely label) ----------
+    // renderTrial (resets selection + likely label) 
     function renderTrial(){
       const t = state.trials[state.i];
       state.currentRow = t;
@@ -263,7 +263,7 @@
       const nextBtn = $('#nextBtn'); if (nextBtn) nextBtn.disabled = true;
       state.tStart = performance.now();
     }
-    // ------------------------------------------------------------------
+
 
     // Answer click (exclusive selection + save)
     $all('.controls .btn').forEach(btn=>{
@@ -271,7 +271,7 @@
         const targetBtn=(e.currentTarget && e.currentTarget.closest('.btn')) || e.target.closest('.btn');
         if(!targetBtn) return;
 
-        // Exclusive selection styling
+
         $all('.controls .btn').forEach(b=>{
           b.classList.remove('selected');
           b.setAttribute('aria-pressed','false');
@@ -322,13 +322,13 @@
       }
     });
 
-    // Copy code
+
     const copyBtn = $('#copyBtn');
     if (copyBtn) copyBtn.addEventListener('click',()=>{
       navigator.clipboard.writeText(state.completionCode||'').then(()=>alert('Copied!'));
     });
 
-    // Fire-and-forget POST to Apps Script (no-cors)
+  
     async function postRow(row){
       await fetch(APPS_SCRIPT_URL,{
         method:'POST',mode:'no-cors',
